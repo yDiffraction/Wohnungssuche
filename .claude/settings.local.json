@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -A \"Mozilla/5.0\" \"https://www.woko.ch/de/zimmer-wg-wohnungen-anbieten/angebot-aufgeben\" -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s -A \"Mozilla/5.0\" \"https://www.woko.ch/unser-angebot/freie-objekte\" -o /tmp/claude-1000/-home-pi-code-wohnscraper/5d9c0a21-fd0c-4d91-ac30-7a6e2419416b/scratchpad/woko.html -w \"HTTP %{http_code}\\\\n\")"
+    ]
+  }
+}
