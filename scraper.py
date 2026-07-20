@@ -1,91 +1,22 @@
-"""Scraper for woko.ch's list of free rooms ("Zimmer").
-
-Simulates picking <option value="0"> ("Zimmer") from the
-<select class="crooms__form-select" name="so_typ"> filter, then lists the
-listings that would become visible under that filter.
-
-The site filters listings entirely client-side (JS toggles a "js-hidden"
-class on each <div class="crooms__element"> based on its data-typ attribute),
-so this replicates that by keeping only elements whose data-typ matches the
-selected option's value.
-"""
-
 import os
-
 import requests
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin
 
-BASE_URL = "https://www.woko.ch/unser-angebot/freie-objekte"
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    )
-}
+import woko
 
 
-def _extract_text_pairs(element):
-    """Pair up crooms__text--key labels with the following crooms__text value."""
-    text_col = element.select_one("div.crooms__column--text")
-    if not text_col:
-        return {}
-    divs = text_col.find_all("div", recursive=False)
-    pairs = {}
-    for key_div, value_div in zip(divs[0::2], divs[1::2]):
-        pairs[key_div.get_text(strip=True)] = value_div.get_text(strip=True)
-    return pairs
-
-
-def _parse_price(text):
-    """Parse a Swiss-formatted price like "1'180.-" or "1'180.50" (rappen) into an int."""
-    if not text:
-        return None
-    cleaned = text.replace("’", "").replace("'", "").strip()
-    if cleaned.endswith(".-"):
-        cleaned = cleaned[:-2]
-    try:
-        return int(float(cleaned))
-    except ValueError:
-        return None
-
-
-def scrape():
-    response = requests.get(BASE_URL, headers=HEADERS, timeout=15)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    typ_select = soup.select_one('select.crooms__form-select[name="so_typ"]')
-    target_option = typ_select.select_one('option[value="0"]')
-    target_value = target_option["value"]
-
-    elements_container = soup.select_one("div.crooms__elements")
-    all_elements = elements_container.find_all("div", class_="crooms__element", recursive=False)
-    visible_elements = [el for el in all_elements if el.get("data-typ") == target_value]
-
-    listings = []
-    for el in visible_elements:
-        headline = el.select_one("h3.crooms__headline")
-        price = el.select_one("span.crooms__price--value")
-        link = el.select_one("a.crooms__link--detail")
-        texts = _extract_text_pairs(el)
-
-        price_text = price.get_text(strip=True) if price else None
-        price_value = _parse_price(price_text)
-        if price_value is None or price_value >= 900:
-            continue
-
-        listings.append(
-            {
-                "title": headline.get_text(strip=True) if headline else None,
-                "available_from": texts.get("Wann"),
-                "address": texts.get("Adresse"),
-                "city": texts.get("Ort"),
-                "price": price_text,
-                "detail_url": urljoin(BASE_URL, link["href"]) if link else None,
-            }
-        )
-    return listings
+listing_keys = [
+    "title",
+    "available_from",
+    "available_until",
+    "address",
+    "name",
+    "contact",
+    "price",
+    "url",
+    "other_tennants",
+    "viewings",
+    "extra",
+]
 
 
 def _load_existing_lines(path):
@@ -98,7 +29,7 @@ def _load_existing_lines(path):
 def _format_listing_line(listing):
     return " | ".join(
         str(listing.get(k)) for k in
-        ("title", "available_from", "address", "city", "price", "detail_url")
+        ("title", "available_from", "address", "price", "url")
     )
 
 
@@ -118,9 +49,9 @@ def _format_listing_block(listing):
     return (
         f"**{listing['title']}**\n"
         f"Available from: {listing['available_from']}\n"
-        f"Address: {listing['address']}, {listing['city']}\n"
+        f"Address: {listing['address']}\n"
         f"Price: {listing['price']}\n"
-        f"Link: {listing['detail_url']}"
+        f"Link: {listing['url']}"
     )
 
 
@@ -152,8 +83,10 @@ def _notify_discord(listings):
 
 
 def main():
+    notify_discord = False
+
     _load_dotenv()
-    listings = scrape()
+    listings = woko.scrape()
     print(f"Found {len(listings)} listing(s):\n")
 
     listings_file = "listings.txt"
@@ -166,14 +99,15 @@ def main():
         with open(listings_file, "a", encoding="utf-8") as f:
             for listing in new_listings:
                 f.write(_format_listing_line(listing) + "\n")
-        _notify_discord(new_listings)
+        if notify_discord:
+            _notify_discord(new_listings)
 
     for i, listing in enumerate(listings, start=1):
         print(f"{i}. {listing['title']}")
         print(f"   Available from: {listing['available_from']}")
-        print(f"   Address: {listing['address']}, {listing['city']}")
+        print(f"   Address: {listing['address']}")
         print(f"   Price: {listing['price']}")
-        print(f"   Link: {listing['detail_url']}")
+        print(f"   Link: {listing['url']}")
         print()
 
 
