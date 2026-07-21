@@ -4,21 +4,6 @@ import requests
 import woko
 
 
-listing_keys = [
-    "title",
-    "available_from",
-    "available_until",
-    "address",
-    "name",
-    "contact",
-    "price",
-    "url",
-    "other_tennants",
-    "viewings",
-    "extra",
-]
-
-
 def _load_existing_lines(path):
     if not os.path.exists(path):
         return set()

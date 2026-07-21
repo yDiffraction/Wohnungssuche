@@ -2,7 +2,7 @@ from bs4 import BeautifulSoup
 import requests
 
 from urllib.parse import urljoin
-from scraper import listing_keys
+from listing import listing_keys
 
 
 BASE_URL = "https://www.woko.ch/unser-angebot/freie-objekte"
@@ -52,8 +52,12 @@ def _extract_detail_pairs(soup):
 
 
 def scrape_detail(detail_url):
-    response = requests.get(detail_url, headers=HEADERS, timeout=15)
-    response.raise_for_status()
+    try:
+        response = requests.get(detail_url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"Failed to fetch detail page {detail_url}: {exc}")
+        return {}
     soup = BeautifulSoup(response.text, "html.parser")
     return _extract_detail_pairs(soup)
 
@@ -70,6 +74,12 @@ def scrape():
     elements_container = soup.select_one("div.crooms__elements")
     all_elements = elements_container.find_all("div", class_="crooms__element", recursive=False)
     visible_elements = [el for el in all_elements if el.get("data-typ") == target_value]
+
+    known_text_keys = {"Wann", "Adresse", "Ort"}
+    known_detail_keys = {
+        "Wann", "Bis", "Adresse", "Kontakt", "Telefon", "E-Mail",
+        "Besichtigungstermin", "Anzahl Mitbewohner",
+    }
 
     listings = []
     for el in visible_elements:
@@ -90,12 +100,14 @@ def scrape():
         city = texts.get("Ort")
         address = f"{street}, {city}" if street and city and city not in street else street
 
+        name = details.get("Kontakt")
         phone = details.get("Telefon")
         email = details.get("E-Mail")
         contact = " / ".join(p for p in (phone, email) if p) or None
 
-        known_detail_keys = {"Wann", "Bis", "Adresse", "Miete", "Kontakt", "Telefon", "E-Mail", "Besichtigungstermin"}
-        extra = {k: v for k, v in details.items() if k not in known_detail_keys} or None
+        extra = {k: v for k, v in texts.items() if k not in known_text_keys}
+        extra.update({k: v for k, v in details.items() if k not in known_detail_keys})
+        extra = extra or None
 
         listing = {key: None for key in listing_keys}
         listing.update({
@@ -103,11 +115,11 @@ def scrape():
             "available_from": texts.get("Wann") or details.get("Wann"),
             "available_until": details.get("Bis"),
             "address": address,
-            "name": details.get("Kontakt"),
+            "name": name,
             "contact": contact,
             "price": price_value,
             "url": detail_url,
-            "other_tennants": details.get("Mitbewohner"),
+            "other_tennants": details.get("Anzahl Mitbewohner"),
             "viewings": details.get("Besichtigungstermin"),
             "extra": extra,
         })
