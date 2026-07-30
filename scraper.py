@@ -68,7 +68,7 @@ def _notify_discord(listings):
 
 
 def main():
-    notify_discord = False
+    notify_discord = True
 
     _load_dotenv()
     listings = woko.scrape()
